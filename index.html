@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      * {
+        padding: 0;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as PIXI from "./node_modules/pixi.js/dist/pixi.mjs"
+      const app = new PIXI.Application({
+        width: window.innerWidth,
+        height: window.innerHeight,
+        backgroundColor: 0x1099bb,
+        resolution: window.devicePixelRatio || 1,
+        antialias: true, //抗锯齿
+      })
+      document.body.appendChild(app.view)
+      const LEVEL = [
+        ["------", "-x   -", "---  -", "-ou  -", "-    -", "------"],
+      ]
+      let levelStatus = {
+        currentLevel: 1,
+        PW: 50,
+        PY: 50,
+        px: 3,
+        py: 1,
+        distroyListen: null,
+      }
+      let sprites = null
+      const createLevel = (level) => {
+        let sprites = []
+        const PW = levelStatus.PW
+        const PY = levelStatus.PY
+        LEVEL[level].forEach((item, x) => {
+          sprites.push([])
+
+          console.log(item)
+          for (let y = 0; y < item.length; y++) {
+            let s = null
+            const it = item[y]
+            if (it == "-") {
+              s = creatSprite("asset/js.png", y * PW, x * PY)
+              s.id = "wall"
+            } else if (it == " ") {
+              // s = creatSprite("asset/css.jpg", x * PW, y * PY)
+              s = undefined
+            } else if (it == "o") {
+              s = creatSprite("asset/html.jpg", y * PW, x * PY)
+              s.id = "player"
+            } else if (it == "u") {
+              s = creatSprite("asset/c.webp", y * PW, x * PY)
+              s.id = "box"
+            } else if (it == "x") {
+              s = creatSprite("asset/1.png", y * PW, x * PY)
+              s.id = "goal"
+            }
+            sprites[x].push(s)
+          }
+        })
+        return sprites
+      }
+      function hitTestRectangle(r1, r2) {
+        //Define the variables we'll need to calculate
+        let hit, combinedHalfWidths, combinedHalfHeights, vx, vy
+
+        //hit will determine whether there's a collision
+        hit = false
+
+        //Find the center points of each sprite
+        r1.centerX = r1.x + r1.width / 2
+        r1.centerY = r1.y + r1.height / 2
+        r2.centerX = r2.x + r2.width / 2
+        r2.centerY = r2.y + r2.height / 2
+
+        //Find the half-widths and half-heights of each sprite
+        r1.halfWidth = r1.width / 2
+        r1.halfHeight = r1.height / 2
+        r2.halfWidth = r2.width / 2
+        r2.halfHeight = r2.height / 2
+
+        //Calculate the distance vector between the sprites
+        vx = r1.centerX - r2.centerX
+        vy = r1.centerY - r2.centerY
+
+        //Figure out the combined half-widths and half-heights
+        combinedHalfWidths = r1.halfWidth + r2.halfWidth
+        combinedHalfHeights = r1.halfHeight + r2.halfHeight
+
+        //Check for a collision on the x axis
+        if (Math.abs(vx) < combinedHalfWidths) {
+          //A collision might be occurring. Check for a collision on the y axis
+          if (Math.abs(vy) < combinedHalfHeights) {
+            //There's definitely a collision happening
+            hit = true
+          } else {
+            //There's no collision on the y axis
+            hit = false
+          }
+        } else {
+          //There's no collision on the x axis
+          hit = false
+        }
+
+        //`hit` will be either `true` or `false`
+        return hit
+      }
+      const creatSprite = (url, x = 0, y = 0) => {
+        const PW = levelStatus.PW
+        const PY = levelStatus.PY
+        //创建一个纹理
+        const texture = PIXI.Texture.from(url)
+        //利用创建一个精灵
+        const sprite = new PIXI.Sprite(texture)
+        sprite.width = PW
+        sprite.height = PY
+        sprite.x = x
+        sprite.y = y
+        app.stage.addChild(sprite)
+        return sprite
+      }
+      const isGoalOrUndefined = (sprite) => {
+        return sprite === undefined || sprite.id === "goal"
+      }
+      const judgePull = (sprites, key) => {
+        const px = levelStatus.px
+        const py = levelStatus.py
+        const player = sprites[px][py]
+        const dir = {
+          w: [-1, 0],
+          s: [1, 0],
+          a: [0, -1],
+          d: [0, 1],
+        }
+        const dirX = dir[key][0]
+        const dirY = dir[key][1]
+        if (sprites[px + dirX][py + dirY] === undefined) {
+          return 1
+        } else if (sprites[px + dirX][py + dirY].id === "goal") {
+          return 1
+        } else if (sprites[px + dirX][py + dirY].id === "wall") {
+          return 0
+        } else if (
+          sprites[px + dirX][py + dirY].id === "box" &&
+          isGoalOrUndefined(sprites[px + dirX * 2][py + dirY * 2])
+        ) {
+          return 2
+        } else {
+          return 0
+        }
+      }
+      const setup = (sprite, key) => {
+        let preX = sprite.x
+        let preY = sprite.y
+        const PW = levelStatus.PW
+        const PY = levelStatus.PY
+        const px = levelStatus.px
+        const py = levelStatus.py
+        const V = 2
+        const dir = {
+          w: [-1, 0],
+          s: [1, 0],
+          a: [0, -1],
+          d: [0, 1],
+        }
+        const dirX = dir[key][0]
+        const dirY = dir[key][1]
+        levelStatus.distroyListen()
+        app.ticker.add(function add(delta) {
+          //delta 每一帧之间的时间
+          // hitTestRectangle()
+          // sprite.rotation += 0.01 * delta
+
+          const step = judgePull(sprites, key)
+          console.log(step)
+          switch (step) {
+            case 0:
+              levelStatus.distroyListen = startListen()
+              app.ticker.remove(add)
+              break
+            case 1:
+              {
+                sprite.x += dirY * V
+                sprite.y += dirX * V
+              }
+              break
+            case 2:
+              {
+                console.log("2")
+                sprite.x += dirY * V
+                sprite.y += dirX * V
+                sprites[px + dirX][py + dirY].x += dirY * V
+                sprites[px + dirX][py + dirY].y += dirX * V
+              }
+              break
+            default:
+              break
+          }
+          // console.log(Math.abs(sprite.x - preX))
+          if (
+            Math.abs(sprite.x - preX) >= PW ||
+            Math.abs(sprite.y - preY) >= PY
+          ) {
+            console.log("out")
+            if (step === 1) {
+              const cen = sprites[px][py]
+              sprites[px][py] = sprites[px + dirX][py + dirY]
+              sprites[px + dirX][py + dirY] = cen
+            } else if (step === 2) {
+              sprites[px + dirX * 2][py + dirY * 2] =
+                sprites[px + dirX][py + dirY]
+              sprites[px + dirX][py + dirY] = sprites[px][py]
+              sprites[px][py] = undefined
+            }
+            levelStatus.px = px + dirX
+            levelStatus.py = py + dirY
+            console.log(sprites, levelStatus)
+            levelStatus.distroyListen = startListen()
+            app.ticker.remove(add)
+          }
+        })
+      }
+
+      function keyboard(value) {
+        let key = {}
+        key.value = value
+        key.isDown = false
+        key.isUp = true
+        key.press = undefined
+        key.release = undefined
+        //The `downHandler`
+        key.downHandler = (event) => {
+          // console.log(event.key)
+          if (event.key === key.value) {
+            if (key.isUp && key.press) key.press()
+            key.isDown = true
+            key.isUp = false
+            console.log(sprites)
+            setup(sprites[levelStatus.px][levelStatus.py], key.value)
+            event.preventDefault()
+          }
+        }
+
+        //The `upHandler`
+        key.upHandler = (event) => {
+          if (event.key === key.value) {
+            if (key.isDown && key.release) key.release()
+            key.isDown = false
+            key.isUp = true
+            event.preventDefault()
+          }
+        }
+
+        //Attach event listeners
+        const downListener = key.downHandler.bind(key)
+        const upListener = key.upHandler.bind(key)
+
+        window.addEventListener("keydown", downListener, false)
+        window.addEventListener("keyup", upListener, false)
+
+        // Detach event listeners
+        key.unsubscribe = () => {
+          window.removeEventListener("keydown", downListener)
+          window.removeEventListener("keyup", upListener)
+        }
+
+        return key
+      }
+      const startListen = () => {
+        const d = keyboard("d")
+        const w = keyboard("w")
+        const a = keyboard("a")
+        const s = keyboard("s")
+        return () => {
+          d.unsubscribe()
+          w.unsubscribe()
+          a.unsubscribe()
+          s.unsubscribe()
+        }
+      }
+
+      ;(async function () {
+        sprites = await createLevel(0)
+        console.log(sprites)
+        levelStatus.distroyListen = startListen()
+      })()
+    </script>
+  </body>
+</html>
